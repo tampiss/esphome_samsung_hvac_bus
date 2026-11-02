@@ -164,6 +164,13 @@ samsung_ac:
       silence_mode:
         name: "Kitchen silence mode"
 
+      # NASA only: display/lighting of the indoor unit panel (0x4016). The unit never reports it, so it is read
+      # every update_interval. Powering on resets the display to on; while this switch is off, it is kept off:
+      # a power-on from Home Assistant carries display = off (no extra beep), a power-on by the remote is
+      # followed by a separate write (one extra beep).
+      display:
+        name: "Kitchen display"
+
       # If your AC sits near or inside the ceiling, the reported room temperature is often a little bit heigher then whats 
       # measured below. This property can be used to correct that value.
       room_temperature_offset: -1.4

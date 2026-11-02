@@ -185,6 +185,11 @@ namespace esphome
         execute_if_device_exists(address, [value](Samsung_AC_Device *dev)
                                  { dev->update_silence_mode(value); });
       }
+      void set_display(const std::string address, bool value) override
+      {
+        execute_if_device_exists(address, [value](Samsung_AC_Device *dev)
+                                 { dev->update_display(value); });
+      }
 
       void set_water_heater_power(const std::string address, bool value) override
       {

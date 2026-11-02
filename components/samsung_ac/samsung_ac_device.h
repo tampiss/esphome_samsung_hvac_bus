@@ -151,6 +151,7 @@ namespace esphome
       Samsung_AC_Switch *power{nullptr};
       Samsung_AC_Switch *automatic_cleaning{nullptr};
       Samsung_AC_Switch *silence_mode{nullptr};
+      Samsung_AC_Switch *display{nullptr};
       Samsung_AC_Button *filter_reset{nullptr};
       Samsung_AC_Switch *water_heater_power{nullptr};
       Samsung_AC_Mode_Select *mode{nullptr};
@@ -295,6 +296,28 @@ namespace esphome
         };
       }
 
+      void set_display_switch(Samsung_AC_Switch *switch_)
+      {
+        display = switch_;
+        display->write_state_ = [this](bool value)
+        {
+          _display_wanted = value;
+          ProtocolRequest request;
+          request.display = value;
+          request.display_read = true;
+          publish_request(request);
+        };
+      }
+
+      void request_display_read()
+      {
+        if (display == nullptr)
+          return;
+        ProtocolRequest request;
+        request.display_read = true;
+        publish_request(request);
+      }
+
       void set_filter_reset_button(Samsung_AC_Button *button)
       {
         filter_reset = button;
@@ -408,9 +431,19 @@ namespace esphome
       optional<Mode> _cur_mode;
       optional<WaterHeaterMode> _cur_water_heater_mode;
 
+      optional<bool> _cur_display;
+      // Display state the user wants, re-applied when the unit powers on (it resets the display to on)
+      optional<bool> _display_wanted;
+      // Set when our own power-on request already carried display = off
+      bool _display_power_on_handled{false};
+      uint32_t _power_on_millis{0};
+
       void update_power(bool value)
       {
+        const bool powered_on = value && _cur_power.has_value() && !_cur_power.value();
         _cur_power = value;
+        if (powered_on)
+          on_display_power_on();
         if (power != nullptr)
           power->publish_state(value);
         if (climate != nullptr)
@@ -421,6 +454,47 @@ namespace esphome
       {
         if (silence_mode != nullptr)
           silence_mode->publish_state(value);
+      }
+
+      void update_display(bool value)
+      {
+        _cur_display = value;
+        // Take over changes made by the remote or SmartThings, but not the reset to on right after power-on
+        const bool power_stable = _cur_power.has_value() && _cur_power.value() && target->get_miliseconds() - _power_on_millis > 10000;
+        if (!_display_wanted.has_value() || power_stable)
+          _display_wanted = value;
+        if (display != nullptr)
+          display->publish_state(value);
+      }
+
+      void on_display_power_on()
+      {
+        _power_on_millis = target->get_miliseconds();
+        if (display == nullptr)
+          return;
+
+        ProtocolRequest request;
+        request.display_read = true;
+        if (_display_power_on_handled)
+          _display_power_on_handled = false;
+        else if (_display_wanted.has_value() && !_display_wanted.value())
+          request.display = false; // powered on by the remote, costs one extra beep
+        protocol->publish_request(target, address, request);
+      }
+
+      // Powering on resets the display to on, unless the power-on packet itself changes it to off
+      void apply_display_to_power_on(ProtocolRequest &request)
+      {
+        if (display == nullptr || request.display || !_display_wanted.has_value() || _display_wanted.value())
+          return;
+        const bool powering_on = (request.power.has_value() && request.power.value()) || request.mode.has_value();
+        if (!powering_on || !_cur_power.has_value() || _cur_power.value())
+          return;
+
+        request.display = false;
+        // With 0 already stored the unit ignores the value and lights up, so write 1 first
+        request.display_prime = !(_cur_display.has_value() && _cur_display.value());
+        _display_power_on_handled = true;
       }
 
       void update_automatic_cleaning(bool value)
@@ -501,6 +575,7 @@ namespace esphome
 
       void publish_request(ProtocolRequest &request)
       {
+        apply_display_to_power_on(request);
         protocol->publish_request(target, address, request);
       }
 

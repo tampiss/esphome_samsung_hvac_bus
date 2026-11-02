@@ -506,7 +506,22 @@ namespace esphome
                 if (da.klass == AddressClass::Undefined)
                     continue;
 
+                if (request.display_prime)
+                {
+                    Packet prime = Packet::create(da, DataType::Request, MessageNumber::ENUM_in_display, 1);
+                    LOG_PACKET_SEND("Publish packet", prime);
+                    target->publish_data(prime.command.packetNumber, prime.encode());
+                }
+
                 Packet packet = Packet::createa_partial(da, DataType::Request);
+
+                // Must be ahead of power, otherwise the unit lights the panel when powering on
+                if (request.display)
+                {
+                    MessageSet display(MessageNumber::ENUM_in_display);
+                    display.value = request.display.value() ? 1 : 0;
+                    packet.messages.push_back(display);
+                }
 
                 if (request.mode)
                 {
@@ -600,12 +615,20 @@ namespace esphome
                     packet.messages.push_back(lr_swing);
                 }
 
-                if (packet.messages.size() == 0)
-                    continue;
+                if (packet.messages.size() > 0)
+                {
+                    LOG_PACKET_SEND("Publish packet", packet);
 
-                LOG_PACKET_SEND("Publish packet", packet);
+                    target->publish_data(packet.command.packetNumber, packet.encode());
+                }
 
-                target->publish_data(packet.command.packetNumber, packet.encode());
+                // Last, so that it reads back what the packets above have changed
+                if (request.display_read)
+                {
+                    Packet read = Packet::create(da, DataType::Read, MessageNumber::ENUM_in_display, 0);
+                    LOG_PACKET_SEND("Publish packet", read);
+                    target->publish_data(read.command.packetNumber, read.encode());
+                }
             }
             outgoing_queue_.clear();
         }
@@ -634,6 +657,15 @@ namespace esphome
 
             if (request.silence_mode)
                 queued.silence_mode = request.silence_mode;
+
+            if (request.display)
+                queued.display = request.display;
+
+            if (request.display_prime)
+                queued.display_prime = true;
+
+            if (request.display_read)
+                queued.display_read = true;
 
             if (request.filter_reset)
                 queued.filter_reset = request.filter_reset;
@@ -1059,6 +1091,20 @@ namespace esphome
             if (packet_.command.dataType == DataType::Response)
             {
                 LOG_PACKET_RECV("Response %s", packet_);
+                if (dest != me)
+                    return;
+
+                // Answer to our Read (same packet number), it takes the place of an Ack
+                target->ack_data(packet_.command.packetNumber);
+                for (auto &message : packet_.messages)
+                {
+                    // Display is not sent as Notification, Read is the only way to get it. Unsupported = 0xFF.
+                    if (message.messageNumber == MessageNumber::ENUM_in_display && (message.value == 0 || message.value == 1))
+                    {
+                        LOG_MESSAGE(ENUM_in_display, (double)message.value, source, dest);
+                        target->set_display(source, message.value != 0);
+                    }
+                }
                 return;
             }
             if (packet_.command.dataType == DataType::Write)

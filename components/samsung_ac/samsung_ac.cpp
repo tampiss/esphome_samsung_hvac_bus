@@ -36,6 +36,9 @@ namespace esphome
         {
           state_tracker_.update(address, current_value.value());
         }
+
+        // Display state is never notified by the unit, so it has to be polled
+        pair.second->request_display_read();
       }
 
       debug_mqtt_connect(debug_mqtt_host, debug_mqtt_port, debug_mqtt_username, debug_mqtt_password);

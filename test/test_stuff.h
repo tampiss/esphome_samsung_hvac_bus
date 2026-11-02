@@ -53,6 +53,15 @@ public:
         last_set_power_value = value;
     }
 
+    std::string last_set_display_address;
+    bool last_set_display_value;
+    void set_display(const std::string address, bool value) override
+    {
+        cout << "> " << address << " set_display=" << to_string(value) << endl;
+        last_set_display_address = address;
+        last_set_display_value = value;
+    }
+
     std::string last_set_automatic_cleaning_address;
     bool last_set_automatic_cleaning_value;
     void set_silence_mode(const std::string address, bool value) override

@@ -92,6 +92,7 @@ namespace esphome
 
             ENUM_in_operation_automatic_cleaning = 0x4111,
             ENUM_in_silence_mode = 0x4046, // ENUM_IN_SILENCE / NASA_CONTROL_SILENCE
+            ENUM_in_display = 0x4016,      // Panel display/lighting (0 = off, 1 = on), only answered to Read, never notified
 
             VAR_in_temp_target_f = 0x4201,
             VAR_in_temp_room_f = 0x4204,

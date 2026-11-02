@@ -81,6 +81,7 @@ namespace esphome
             virtual void set_power(const std::string address, bool value) = 0;
             virtual void set_automatic_cleaning(const std::string address, bool value) = 0;
             virtual void set_silence_mode(const std::string address, bool value) = 0;
+            virtual void set_display(const std::string address, bool value) = 0;
             virtual void set_water_heater_power(const std::string address, bool value) = 0;
             virtual void set_room_temperature(const std::string address, float value) = 0;
             virtual void set_target_temperature(const std::string address, float value) = 0;
@@ -111,6 +112,12 @@ namespace esphome
             optional<bool> power;
             optional<bool> automatic_cleaning;
             optional<bool> silence_mode;
+            optional<bool> display;
+            // Write display = 1 in a separate packet first, so that a following power-on with display = 0
+            // actually changes the value (the unit ignores it when 0 is already stored and lights up anyway)
+            bool display_prime{false};
+            // Send a Read for the display state (it is never sent as Notification)
+            bool display_read{false};
             optional<bool> filter_reset;
             optional<bool> water_heater_power;
             optional<Mode> mode;

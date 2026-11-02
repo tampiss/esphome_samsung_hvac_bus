@@ -676,6 +676,79 @@ void test_nasa_automatic_cleaning()
     assert(target.last_set_automatic_cleaning_value == false);
 }
 
+void test_nasa_display()
+{
+    std::cout << "test_nasa_display" << std::endl;
+
+    // Response to our Read sets the display state
+    DebugTarget target;
+    target.last_set_display_address = "";
+
+    Packet packet;
+    packet.sa = Address::parse("20.00.02");
+    packet.da = Address::get_my_address();
+    packet.command.packetInformation = true;
+    packet.command.protocolVersion = 2;
+    packet.command.packetType = PacketType::Normal;
+    packet.command.dataType = DataType::Response;
+    packet.command.packetNumber = 21;
+
+    MessageSet display_msg(MessageNumber::ENUM_in_display);
+    display_msg.value = 0;
+    packet.messages.push_back(display_msg);
+    test_process_data(bytes_to_hex(packet.encode()), target);
+    assert(target.last_set_display_address == "20.00.02");
+    assert(target.last_set_display_value == false);
+
+    // Unsupported (0xFF) is ignored
+    target = DebugTarget();
+    target.last_set_display_address = "";
+    packet.messages[0].value = 0xFF;
+    test_process_data(bytes_to_hex(packet.encode()), target);
+    assert(target.last_set_display_address == "");
+
+    // Response for someone else is ignored
+    target = DebugTarget();
+    target.last_set_display_address = "";
+    packet.messages[0].value = 1;
+    packet.da = Address::parse("62.ff.00");
+    test_process_data(bytes_to_hex(packet.encode()), target);
+    assert(target.last_set_display_address == "");
+
+    // Power-on: prime packet, then display ahead of power, then read
+    target = DebugTarget();
+    NasaProtocol protocol;
+    ProtocolRequest request;
+    request.power = true;
+    request.display = false;
+    request.display_prime = true;
+    request.display_read = true;
+    protocol.publish_request(&target, "20.00.02", request);
+    protocol.protocol_update(&target);
+    assert(target.all_publish_data.size() == 3);
+
+    std::vector<Packet> sent;
+    for (auto &hex : target.all_publish_data)
+    {
+        Packet p;
+        auto bytes = hex_to_bytes(hex);
+        assert(p.decode(bytes).type == DecodeResultType::Processed);
+        sent.push_back(p);
+    }
+    assert(sent[0].command.dataType == DataType::Request);
+    assert(sent[0].messages.size() == 1);
+    assert(sent[0].messages[0].messageNumber == MessageNumber::ENUM_in_display);
+    assert(sent[0].messages[0].value == 1);
+
+    assert(sent[1].command.dataType == DataType::Request);
+    assert(sent[1].messages[0].messageNumber == MessageNumber::ENUM_in_display);
+    assert(sent[1].messages[0].value == 0);
+    assert(sent[1].messages[1].messageNumber == MessageNumber::ENUM_in_operation_power);
+
+    assert(sent[2].command.dataType == DataType::Read);
+    assert(sent[2].messages[0].messageNumber == MessageNumber::ENUM_in_display);
+}
+
 void test_nasa_water_heater_control()
 {
     std::cout << "test_nasa_water_heater_control" << std::endl;
@@ -1617,6 +1690,7 @@ int main(int argc, char *argv[])
     
     // NASA control tests (water heater, automatic cleaning, alt mode, swing)
     test_nasa_automatic_cleaning();
+    test_nasa_display();
     test_nasa_water_heater_control();
     test_nasa_alt_mode();
     test_nasa_swing_controls();
